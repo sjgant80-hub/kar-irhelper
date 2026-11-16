@@ -246,7 +246,9 @@ export function propose(os, f) {
   }
   if (f.rule === 'proc-temp') {
     const p = [];
-    if (safePath(d.path)) p.push(step(f, 1, 'preserve', 'Record the file\'s hash for analysis', ['powershell.exe', '-NoProfile', '-Command', 'Get-FileHash -LiteralPath \'' + d.path + '\' | Format-List'], null));
+    // certutil, not Get-FileHash: Windows PowerShell started from a PowerShell 7 window cannot load Get-FileHash
+    // (it inherits PowerShell 7's module path), which CI on a real Windows host showed.
+    if (safePath(d.path)) p.push(step(f, 1, 'preserve', 'Record the file\'s SHA-256 hash for analysis', ['certutil.exe', '-hashfile', d.path, 'SHA256'], null));
     if (safePid(d.pid)) p.push(step(f, p.length + 1, 'eradicate', 'End the process (cannot be undone)', ['taskkill.exe', '/PID', d.pid, '/F'], null));
     return p.length > 0 ? p : [byHand(f, 1, 'Check this process by hand: its id or path is not in the expected form')];
   }

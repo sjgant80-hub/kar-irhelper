@@ -66,7 +66,7 @@ footer{border-top:1px solid var(--line);margin-top:46px;padding:22px 0 40px;colo
   <ol class="steps">
     <li><b>Walk through the demo below.</b> Check the authorization, analyse a synthetic compromised host, and approve a step. Then record the log's latest hash and try to tamper with the log.</li>
     <li><b>On a real host,</b> make an authorization file: <code>node bin/ir.mjs scope-template &gt; scope.json</code>. Fill in who authorized it, why, and until when (30 days at most).</li>
-    <li><b>Collect, then analyse:</b> <code>node bin/ir.mjs collect --scope scope.json</code>, then <code>node bin/ir.mjs analyse evidence.json</code>. Nothing on the host is changed.</li>
+    <li><b>Collect, then analyse,</b> as root or an administrator: <code>node bin/ir.mjs collect --scope scope.json</code>, then <code>node bin/ir.mjs analyse evidence.json</code>. Nothing on the host is changed. Collect again after you act: each run is logged, so the second shows what changed.</li>
     <li><b>Act deliberately:</b> <code>node bin/ir.mjs approve F1.2 --by "Your name"</code> records your approval and prints the command. You run it. Each step prints the log's latest hash: paste it into the ticket.</li>
   </ol>
 </section>
@@ -117,9 +117,10 @@ footer{border-top:1px solid var(--line);margin-top:46px;padding:22px 0 40px;colo
       <text x="480" y="182" text-anchor="middle" font-size="13" fill="currentColor" fill-opacity=".7" font-family="ui-monospace,monospace">the tool never runs a containment step; it cannot, because it holds no code that does</text>
     </svg>
   </div>
+  <p class="plain"><b>No authorization, no run.</b> It refuses, and logs the refusal, if the authorization has no named person or purpose, has expired, starts in the future, lasts more than 30 days, or does not list this host.</p>
   <p class="plain"><b>Safety by construction.</b> The list of collection commands is fixed in the code. A test fails if any of them uses a command that changes things, such as kill, rm, usermod, iptables, sc config, or PowerShell's Stop-, Set-, New-, Remove- or Disable-.</p>
   <p class="plain">A value from the evidence, such as a process id, an address, an account or a path, is only put into a proposed command if it is in a safe form. It cannot start with a dash (an option), and it cannot hold a quote, <code>$</code>, <code>%</code>, <code>!</code> or a shell operator. Anything else becomes a "check by hand" step with no command at all, so crafted evidence cannot smuggle a command in.</p>
-  <p class="plain"><b>The log</b> is chained with SHA-256. Editing, removing or reordering an entry breaks verification at that entry. Someone with the file could still rewrite every hash after the entry they changed, and the chain alone cannot see that. So each step prints the latest hash for you to record somewhere else, such as the ticket or an email. Checked against that hash, every entry up to it is fixed. The demo above shows both cases.</p>
+  <p class="plain"><b>The log</b> is chained with SHA-256. Editing, removing or reordering an entry breaks verification at that entry. Someone with the file could still rewrite every hash after the entry they changed, and the chain alone cannot see that. So each step prints the latest hash for you to record somewhere else, such as the ticket or an email. Checked against that hash, every entry up to it is fixed. The demo above shows both cases. Each collection's entry also records the SHA-256 of the evidence file it wrote, so the file handed to responders can be shown to be the one collected.</p>
 </section>
 
 <section id="rules">
@@ -136,7 +137,7 @@ footer{border-top:1px solid var(--line);margin-top:46px;padding:22px 0 40px;colo
   <div class="grid">
     <div class="card"><h3><code>ir.mjs</code></h3><p>The whole decision in one dependency-free file: the scope check, the read-only allow-list, the ten rules, the proposals, and the hash chain. Its tests are themselves tested: a mutation gate breaks the code on purpose, and every break must be caught. This page runs it byte for byte.</p></div>
     <div class="card"><h3><code>bin/ir.mjs</code></h3><p>The command line you run on the host: <code>scope-template</code>, <code>collect</code> (with <code>--dry-run</code> to see exactly what it would run), <code>analyse</code>, <code>approve</code>, <code>verify-log</code>. Node 18 or later, no install.</p></div>
-    <div class="card"><h3>Proven on real hosts</h3><p>On every change, CI uses a throwaway GitHub Linux host and a throwaway Windows host. It plants real signs of compromise on each, checks that the tool refuses without an authorization for that host, then collects and analyses. Every planted sign must be found. Then each proposed command and its undo is run, and must do what it says. The log must verify, and must fail once an entry is edited.</p></div>
+    <div class="card"><h3>Proven on real hosts</h3><p>On every change, CI uses a throwaway GitHub Linux host and a throwaway Windows host. It plants real signs of compromise on each, checks that the tool refuses without an authorization for that host, then collects and analyses. Every planted sign must be found. Then a test script stands in for the person approving each step: it runs each proposed command and its undo on that throwaway host, and each must do what it says. The tool itself never runs one. The log must verify, and must fail once an entry is edited.</p></div>
   </div>
 </section>
 
@@ -153,7 +154,7 @@ footer{border-top:1px solid var(--line);margin-top:46px;padding:22px 0 40px;colo
   </div>
   <div class="grid" style="margin-top:14px">
     <div class="card"><h3>Security and data protection</h3><p>It runs on the host and sends nothing anywhere. The evidence it gathers (process lists, logins, account names, IP addresses) is personal and sensitive. It stays in the evidence file on that host, so handle that file under your own retention policy. This page only shows synthetic data, and a file you analyse here stays in your browser.</p></div>
-    <div class="card"><h3>Deployment</h3><p>Keep a checkout on your admin tooling, or on removable media, so it is ready before you need it. Agree in advance who can authorize a response, and keep a filled-in scope template for each estate. Practise on a test host.</p></div>
+    <div class="card"><h3>Deployment</h3><p>Keep a checkout on your admin tooling, or on removable media, so it is ready before you need it. It needs Node.js 18 or later and no network. Many servers have no Node, so carry a portable one too: Node's official zip or tar.xz runs without installing. Agree in advance who can authorize a response, and keep a filled-in scope template for each estate. Practise on a test host.</p></div>
     <div class="card"><h3>Ownership, support and exit</h3><p>MIT, © Simon Gant. Supplier: <a href="https://www.ai-nativesolutions.com/">AI Native Solutions</a>. Support and liability are agreed in each deployment's agreement. There is no service behind it to stop.</p></div>
   </div>
 </section>
@@ -162,9 +163,12 @@ footer{border-top:1px solid var(--line);margin-top:46px;padding:22px 0 40px;colo
   <h2>Limits, answered straight</h2>
   <ul class="plain">
     <li><b>Ten rules are not an EDR.</b> It finds common, well-known signs. A careful attacker can avoid all of them, so its silence is not an all-clear.</li>
+    <li><b>A fact is a lead, not a verdict.</b> On a fresh GitHub runner it also flags the runner's own provisioning agent, which runs from a temp folder, and the SSH keys that provisioning has just written. Both really match the rule, and both are harmless. Someone who knows the host decides.</li>
     <li><b>Linux and Windows only.</b> Some evidence needs administrator rights (the Windows Security log, other users' cron files). What it cannot read is listed in <code>evidence.errors</code>.</li>
     <li><b>Windows task columns depend on the system language:</b> the scheduled-task rule reads the English column names. On other languages, check tasks by hand.</li>
     <li><b>The Linux block proposals use <code>iptables</code>.</b> On hosts managed by <code>nftables</code>, <code>ufw</code> or a cloud firewall, use that tool instead.</li>
+    <li><b>Times in the log come from the host's own clock,</b> which an intruder with full control could change. The hash you record in the ticket carries the ticket's own time.</li>
+    <li><b>Lost the authorization file?</b> Nothing runs without one, so make a new one. The summary of every authorization used is kept in the log and in each evidence file.</li>
     <li><b>Account steps cover local accounts.</b> A domain or directory account is disabled in your directory, not on the host.</li>
     <li><b>Linux SSH logins are read from the systemd journal.</b> On a host that only writes <code>/var/log/auth.log</code> or <code>/var/log/secure</code>, check that file by hand.</li>
     <li><b>It proposes, it does not remediate,</b> and a proposal is not legal or forensic advice. For a serious incident, bring in responders, and hand them the evidence file and the log.</li>
@@ -416,7 +420,9 @@ function propose(os, f) {
   }
   if (f.rule === 'proc-temp') {
     const p = [];
-    if (safePath(d.path)) p.push(step(f, 1, 'preserve', 'Record the file\'s hash for analysis', ['powershell.exe', '-NoProfile', '-Command', 'Get-FileHash -LiteralPath \'' + d.path + '\' | Format-List'], null));
+    // certutil, not Get-FileHash: Windows PowerShell started from a PowerShell 7 window cannot load Get-FileHash
+    // (it inherits PowerShell 7's module path), which CI on a real Windows host showed.
+    if (safePath(d.path)) p.push(step(f, 1, 'preserve', 'Record the file\'s SHA-256 hash for analysis', ['certutil.exe', '-hashfile', d.path, 'SHA256'], null));
     if (safePid(d.pid)) p.push(step(f, p.length + 1, 'eradicate', 'End the process (cannot be undone)', ['taskkill.exe', '/PID', d.pid, '/F'], null));
     return p.length > 0 ? p : [byHand(f, 1, 'Check this process by hand: its id or path is not in the expected form')];
   }

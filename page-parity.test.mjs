@@ -68,6 +68,14 @@ test('what the page says the tool does is what the kernel does', () => {
   const cli = read('bin/ir.mjs');
   assert.equal((cli.match(/execFileSync\(/g) || []).length, 1, 'the command line runs one thing: the collection loop');
   assert.ok(/for \(const c of plan\.commands\) \{\s*try \{ outputs\[c\.id\] = execFileSync\(c\.argv\[0\]/.test(cli), 'and only over the fixed allow-list');
+  assert.ok(/log\('collect', \{[^}]*sha256: IR\.sha256\(text\)/.test(cli) && /writeFileSync\(out, text\)/.test(cli) && text.includes('records the SHA-256 of the evidence file it wrote'), 'the collect entry hashes exactly the file written');
+  assert.ok(/scope: s\.summary/.test(cli) && /log\('scope', \{ host, summary: s\.summary \}\)/.test(cli) && text.includes('kept in the log and in each evidence file'), 'the authorization summary is in the log and the evidence');
+  assert.ok(/log\('refused'/.test(cli) && /process\.exit\(2\)/.test(cli), 'a refusal is logged and exits without collecting');
+  const at = '2026-11-16T12:00:00Z', ok = { authorizedBy: 'a', purpose: 'p', authorizedAt: '2026-11-16T09:00:00Z', expires: '2026-11-17T09:00:00Z', hosts: ['h'] };
+  for (const bad of [{ authorizedBy: '' }, { purpose: '' }, { expires: '2026-11-16T11:00:00Z' }, { authorizedAt: '2026-11-16T13:00:00Z' }, { expires: '2026-12-30T09:00:00Z' }, { hosts: ['other'] }]) {
+    assert.equal(IR.checkScope({ ...ok, ...bad }, 'h', at).ok, false, 'refused: ' + JSON.stringify(bad));
+  }
+  assert.ok(text.includes('has no named person or purpose, has expired, starts in the future, lasts more than 30 days, or does not list this host'));
 });
 
 test('the brochure, supplier, licence and no prices', () => {

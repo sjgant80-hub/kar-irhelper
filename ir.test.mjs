@@ -184,7 +184,7 @@ test('windows proposals, and the service undo restores its start mode', () => {
   assert.deepEqual(p[task.id + '.1'].run, ['schtasks.exe', '/change', '/tn', '\\Sync', '/disable']);
   const proc = r.facts.find((f) => f.rule === 'proc-temp');
   assert.deepEqual(p[proc.id + '.2'].run, ['taskkill.exe', '/PID', '6120', '/F']);
-  assert.ok(p[proc.id + '.1'].run[3].includes('C:\\Users\\bob\\AppData\\Local\\Temp\\svch0st.exe'));
+  assert.deepEqual(p[proc.id + '.1'].run, ['certutil.exe', '-hashfile', 'C:\\Users\\bob\\AppData\\Local\\Temp\\svch0st.exe', 'SHA256']);
   const bf = r.facts.find((f) => f.rule === 'brute-then-success');
   assert.equal(p[bf.id + '.1'].undo[3], "Remove-NetFirewallRule -DisplayName 'IR block 203.0.113.9'");
   assert.equal(p[bf.id + '.1'].run[3], "New-NetFirewallRule -DisplayName 'IR block 203.0.113.9' -Direction Inbound -RemoteAddress 203.0.113.9 -Action Block");
@@ -281,7 +281,8 @@ test('no value from the evidence can become an option, an expansion or a quote i
   assert.equal(win('proc-temp', { pid: 'x', path: 'C:\\Users\\a\\AppData\\Local\\Temp\\%TEMP%.exe' })[0].kind, 'check', 'cmd.exe expands %…% even inside quotes');
   assert.equal(win('brute-then-success', { ip: 'x', user: '-x' })[0].kind, 'check');
   const r = analyse({ os: 'windows', outputs: { processes: '"ProcessId","Name","ExecutablePath"\n"5","a.exe","C:\\Users\\Public\\a b.exe"' } });
-  assert.equal(r.proposals[0].run[3], "Get-FileHash -LiteralPath 'C:\\Users\\Public\\a b.exe' | Format-List", 'listed, so a narrow console cannot cut the hash short');
+  assert.deepEqual(r.proposals[0].run, ['certutil.exe', '-hashfile', 'C:\\Users\\Public\\a b.exe', 'SHA256'], 'a native program: no PowerShell module to fail to load');
+  assert.equal(commandLine(r.proposals[0].run), 'certutil.exe -hashfile "C:\\Users\\Public\\a b.exe" SHA256');
   for (const ev of [LINUX, WIN]) for (const p of analyse(ev).proposals) for (const a of [...(p.run || []), ...(p.undo || [])]) assert.ok(!a.includes('"'), 'no argument holds a double quote: ' + a);
 });
 

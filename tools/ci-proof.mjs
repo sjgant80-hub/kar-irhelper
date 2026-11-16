@@ -85,9 +85,9 @@ if (evidence.os === 'linux') {
   const proc = find('proc-temp', (d) => d.pid === canary.proc);
   if (proc) {
     const [hash, end] = steps(proc);
-    const want = sha(proc.detail.path).toUpperCase();
+    const want = sha(proc.detail.path);
     const h = run(hash.run);
-    if (h.ok && h.out.includes(want)) pass(hash.id + ' preserve  ' + hash.does + ' · ran ' + IR.commandLine(hash.run) + ' · ' + want.slice(0, 16) + '…'); else fail(hash.id + ' did not record the file\'s hash: ' + h.out.trim().slice(0, 300));
+    if (h.ok && h.out.replace(/\s/g, '').toLowerCase().includes(want)) pass(hash.id + ' preserve  ' + hash.does + ' · ran ' + IR.commandLine(hash.run) + ' · ' + want.slice(0, 16) + '…'); else fail(hash.id + ' did not record the file\'s hash: ' + h.out.trim().slice(0, 300));
     act(end, () => !alive(proc.detail.pid));
   }
   const status = (task) => run(['schtasks.exe', '/query', '/tn', task, '/fo', 'csv', '/nh']).out;

@@ -38,8 +38,10 @@ jobs:
           NODE="$(command -v node)"
           # the planted signs: a program running from /tmp, a bash holding a TCP connection, a second uid-0 account,
           # a new SSH key, and a cron job that runs from /tmp
-          cp /bin/sleep /tmp/ir-canary
-          /tmp/ir-canary 900 > /dev/null 2>&1 < /dev/null &
+          # the /tmp program is a copy of bash waiting on a FIFO: a copy of sleep does not run on a runner whose
+          # coreutils are one multi-call binary that picks its tool by the name it was started as
+          cp /bin/bash /tmp/ir-canary && mkfifo /tmp/ir-canary-fifo
+          /tmp/ir-canary -c 'read -r -t 900 x <> /tmp/ir-canary-fifo' > /dev/null 2>&1 < /dev/null &
           PROC=$!
           python3 -m http.server 8999 --bind 127.0.0.1 > /dev/null 2>&1 &
           sleep 2

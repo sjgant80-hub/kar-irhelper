@@ -50,7 +50,7 @@ The log must verify, and must fail when an entry is edited. The kernel's tests a
 
 ## Limits
 
-Ten rules are not an EDR: its silence is not an all-clear. It covers Linux and Windows only, and some evidence needs administrator rights. The scheduled-task rule reads English column names. The Linux block steps use `iptables`, and the account steps cover local accounts only. Linux SSH logins are read from the systemd journal. It proposes and does not remediate, and a proposal is not legal or forensic advice. For a serious incident, bring in responders and hand them the evidence file and the log.
+Ten rules are not an EDR: its silence is not an all-clear. A fact is a lead, not a verdict: on a fresh GitHub runner it also flags the runner's own provisioning agent (it runs from a temp folder) and the SSH keys provisioning has just written, both real matches and both harmless. It covers Linux and Windows only, and some evidence needs administrator rights. The scheduled-task rule reads English column names. The Linux block steps use `iptables`, and the account steps cover local accounts only. Linux SSH logins are read from the systemd journal. It proposes and does not remediate, and a proposal is not legal or forensic advice. For a serious incident, bring in responders and hand them the evidence file and the log.
 
 ## Files
 
