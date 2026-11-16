@@ -1,0 +1,585 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kar IR Helper</title>
+<meta name="description" content="An incident-response helper for hosts you own: it gathers read-only evidence, finds the facts, and proposes containment. It never acts on its own: a person approves each step and runs it, and every step goes into a tamper-evident log.">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'">
+<style>
+:root{--bg:#f6f7f9;--panel:#fff;--ink:#141a22;--ink2:#3c4757;--ink3:#687382;--line:#dbe0e6;--accent:#7a3fb0;--soft:#f0e7f8;--good:#11734f;--goodbg:#e3f4ec;--warn:#9a6200;--warnbg:#fbf0dc;--bad:#a33a2c;--badbg:#fbe6e2;--mono:ui-monospace,"SFMono-Regular",Consolas,monospace;--body:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0d0b12;--panel:#16121d;--ink:#ece8f2;--ink2:#bdb5c9;--ink3:#8f86a0;--line:#2b2436;--accent:#c79bf0;--soft:#2a1d38;--good:#63d69e;--goodbg:#10291e;--warn:#f0b54a;--warnbg:#2e2412;--bad:#f08a7a;--badbg:#3a1a16}}
+:root[data-theme="dark"]{--bg:#0d0b12;--panel:#16121d;--ink:#ece8f2;--ink2:#bdb5c9;--ink3:#8f86a0;--line:#2b2436;--accent:#c79bf0;--soft:#2a1d38;--good:#63d69e;--goodbg:#10291e;--warn:#f0b54a;--warnbg:#2e2412;--bad:#f08a7a;--badbg:#3a1a16}
+*{box-sizing:border-box}html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 var(--body)}a{color:var(--accent)}
+.wrap{max-width:1060px;margin:0 auto;padding:0 20px}
+header.top{position:sticky;top:0;z-index:5;background:color-mix(in srgb,var(--bg) 92%,transparent);backdrop-filter:blur(6px);border-bottom:1px solid var(--line)}
+header.top .wrap{display:flex;align-items:center;gap:16px;min-height:54px}
+.brand{font-weight:700;color:var(--ink);text-decoration:none;white-space:nowrap}
+nav.sections{margin-left:auto;display:flex;gap:14px}nav.sections a{color:var(--ink2);text-decoration:none;font-size:.9rem;white-space:nowrap}
+#theme{border:1px solid var(--line);background:var(--panel);color:var(--ink2);border-radius:8px;padding:4px 10px;font:inherit;font-size:.85rem;cursor:pointer}
+@media (max-width:820px){nav.sections{display:none}}
+section{padding:42px 0 6px}
+h1{font-size:clamp(1.9rem,4.4vw,2.9rem);line-height:1.12;margin:18px 0 12px}h2{font-size:1.5rem;margin:0 0 10px}h3{font-size:1.05rem;margin:0 0 6px}
+.kicker{font:600 .78rem var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--accent);margin:0}
+.lede{font-size:1.1rem;color:var(--ink2);max-width:780px}.plain{color:var(--ink2);max-width:800px}.note{color:var(--ink3);font-size:.9rem}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px 20px}
+.grid{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(250px,1fr))}
+.steps{counter-reset:s;list-style:none;padding:0;margin:14px 0 0;display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
+.steps li{counter-increment:s;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 18px}
+.steps li::before{content:counter(s,decimal-leading-zero);display:block;font:700 .8rem var(--mono);color:var(--accent);margin-bottom:6px}
+.btn{border:1px solid var(--accent);background:var(--accent);color:var(--bg);border-radius:9px;padding:7px 13px;font:inherit;font-weight:600;cursor:pointer}
+.btn.ghost{background:transparent;color:var(--accent)}.btn[disabled]{opacity:.45;cursor:not-allowed}
+.btn:focus-visible,#theme:focus-visible,textarea:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:10px 0}
+textarea,input[type=text]{width:100%;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:8px 10px;font:.82rem/1.5 var(--mono)}
+input[type=text]{width:auto;min-width:220px;font-family:var(--body);font-size:.92rem}
+.verdict{margin:8px 0;padding:10px 12px;border-radius:8px;font-size:.92rem}.verdict.ok{background:var(--goodbg);color:var(--good)}.verdict.no{background:var(--badbg);color:var(--bad)}
+.verdict ul{margin:6px 0 0 18px;padding:0}
+.fact{border-top:1px solid var(--line);padding:12px 0}.fact h3{display:flex;gap:8px;flex-wrap:wrap;align-items:baseline}
+.sev{border-radius:999px;padding:1px 9px;font:600 .72rem var(--mono);text-transform:uppercase}.sev.high{background:var(--badbg);color:var(--bad)}.sev.medium{background:var(--warnbg);color:var(--warn)}
+.src{color:var(--ink3);font:.82rem var(--mono)}
+.prop{margin:8px 0 0 16px;padding:8px 12px;border-left:3px solid var(--line)}.prop.preserve{border-color:var(--good)}.prop.contain{border-color:var(--warn)}.prop.eradicate{border-color:var(--bad)}.prop.check{border-color:var(--ink3)}
+.kind{font:700 .72rem var(--mono);text-transform:uppercase;color:var(--ink3);margin-right:6px}
+code,pre{font-family:var(--mono);font-size:.84em}pre{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 10px;overflow-x:auto;white-space:pre-wrap;word-break:break-all;margin:6px 0}
+.logline{font:.8rem var(--mono);color:var(--ink2);border-top:1px solid var(--line);padding:5px 0;overflow-wrap:anywhere}
+.diagram{width:100%;height:auto;display:block;color:var(--ink)}
+footer{border-top:1px solid var(--line);margin-top:46px;padding:22px 0 40px;color:var(--ink3);font-size:.88rem}footer p{margin:0 0 8px;max-width:900px}
+</style>
+</head>
+<body>
+<header class="top"><div class="wrap">
+  <a class="brand" href="#top">Kar IR Helper</a>
+  <nav class="sections" aria-label="Sections"><a href="#try">Try it</a><a href="#how">How it works</a><a href="#rules">What it looks for</a><a href="#business">For your business</a><a href="#limits">Limits</a></nav>
+  <button id="theme" type="button" aria-label="Switch light or dark">Theme</button>
+</div></header>
+<main class="wrap" id="top">
+
+<section id="what">
+  <p class="kicker">Sovereign AI-Security · built by Kar</p>
+  <h1>When a host you own may be compromised: the evidence, the facts, and what to do next.</h1>
+  <p class="lede">IR Helper runs on the host itself. It reads the evidence with a fixed list of read-only commands, finds the tell-tale facts, and proposes what to do, with the exact command and how to undo it. <b>It never acts on its own.</b> A person approves each step and runs it, and every step goes into a log that shows if anyone edits it later. It will not start without a written authorization naming that host.</p>
+</section>
+
+<section id="start-here">
+  <h2>Start here</h2>
+  <ol class="steps">
+    <li><b>Walk through the demo below.</b> Check the authorization, analyse a synthetic compromised host, and approve a step. Then record the log's latest hash and try to tamper with the log.</li>
+    <li><b>On a real host,</b> make an authorization file: <code>node bin/ir.mjs scope-template &gt; scope.json</code>. Fill in who authorized it, why, and until when (30 days at most).</li>
+    <li><b>Collect, then analyse:</b> <code>node bin/ir.mjs collect --scope scope.json</code>, then <code>node bin/ir.mjs analyse evidence.json</code>. Nothing on the host is changed.</li>
+    <li><b>Act deliberately:</b> <code>node bin/ir.mjs approve F1.2 --by "Your name"</code> records your approval and prints the command. You run it. Each step prints the log's latest hash: paste it into the ticket.</li>
+  </ol>
+</section>
+
+<section id="try">
+  <h2>Try it</h2>
+  <p class="plain">The evidence here is <b>synthetic</b>: written by hand to look like the real commands' output on a compromised host. No real machine's data is on this page.</p>
+  <div class="row"><b>Host:</b> <button class="btn" id="pick-linux" type="button" aria-pressed="true">Linux · web1</button><button class="btn ghost" id="pick-windows" type="button" aria-pressed="false">Windows · DESK7</button></div>
+  <div class="grid">
+    <div class="card">
+      <h3>1 · The authorization</h3>
+      <textarea id="scope" rows="9" spellcheck="false" aria-label="The authorization (scope) file"></textarea>
+      <div class="row"><button class="btn" id="check" type="button">Check it</button><button class="btn ghost" id="t-expired" type="button">Try: expired</button><button class="btn ghost" id="t-host" type="button">Try: another host</button><button class="btn ghost" id="t-unsigned" type="button">Try: nobody signed it</button></div>
+      <div id="scope-verdict" aria-live="polite"></div>
+      <p class="note">The demo checks it against the moment the evidence was collected (16 Nov 2026, 12:00 UTC).</p>
+    </div>
+    <div class="card">
+      <h3>4 · The log</h3>
+      <p class="note">Every check, collection, analysis and approval is chained by hash to the one before it.</p>
+      <div id="log"></div>
+      <p class="note" id="head"></p>
+      <div class="row"><button class="btn ghost" id="record" type="button">Record the latest hash</button><button class="btn ghost" id="verify" type="button">Verify the log</button></div>
+      <div class="row"><button class="btn ghost" id="tamper" type="button">Edit an entry</button><button class="btn ghost" id="rewrite" type="button">Edit an entry and rewrite every hash after it</button></div>
+      <div id="log-verdict" aria-live="polite"></div>
+    </div>
+  </div>
+  <div class="card" style="margin-top:14px">
+    <h3>2 · The facts, and 3 · what to do</h3>
+    <div class="row"><button class="btn" id="analyse" type="button" disabled>Analyse the evidence</button><label>Approver's name <input type="text" id="approver" value="A. Patel" aria-label="Approver's name"></label>
+      <label class="note">or analyse your own <code>evidence.json</code>: <input type="file" id="file" accept=".json"></label></div>
+    <div id="facts" aria-live="polite"><p class="note">Check the authorization first.</p></div>
+  </div>
+</section>
+
+<section id="how">
+  <h2>How it works</h2>
+  <div class="card">
+    <svg class="diagram" viewBox="0 0 960 200" role="img" aria-labelledby="dg-t dg-d"><title id="dg-t">The response loop</title><desc id="dg-d">A written authorization for this host; read-only collection; fixed rules find facts; proposals with exact commands and undo; a person approves and runs each one; every step is chained in the log.</desc>
+      <g font-family="system-ui,sans-serif" font-size="14" fill="currentColor">
+        <g stroke="currentColor" stroke-opacity=".55" fill="none"><rect x="10" y="30" width="170" height="120" rx="10"/><rect x="200" y="30" width="170" height="120" rx="10"/><rect x="390" y="30" width="170" height="120" rx="10"/><rect x="580" y="30" width="170" height="120" rx="10"/><rect x="770" y="30" width="180" height="120" rx="10"/></g>
+        <g stroke="currentColor" stroke-opacity=".6" stroke-width="2"><path d="M180 90h20"/><path d="M370 90h20"/><path d="M560 90h20"/><path d="M750 90h20"/></g>
+        <text x="95" y="58" text-anchor="middle" font-weight="700">1 · Authorized?</text><text x="95" y="82" text-anchor="middle" fill-opacity=".8">who, why, which</text><text x="95" y="102" text-anchor="middle" fill-opacity=".8">hosts, until when;</text><text x="95" y="122" text-anchor="middle" fill-opacity=".8">else it refuses</text>
+        <text x="285" y="58" text-anchor="middle" font-weight="700">2 · Collect</text><text x="285" y="82" text-anchor="middle" fill-opacity=".8">a fixed list of</text><text x="285" y="102" text-anchor="middle" fill-opacity=".8">read-only commands,</text><text x="285" y="122" text-anchor="middle" fill-opacity=".8">no shell</text>
+        <text x="475" y="58" text-anchor="middle" font-weight="700">3 · Facts</text><text x="475" y="82" text-anchor="middle" fill-opacity=".8">ten fixed rules,</text><text x="475" y="102" text-anchor="middle" fill-opacity=".8">each citing the line</text><text x="475" y="122" text-anchor="middle" fill-opacity=".8">it came from</text>
+        <text x="665" y="58" text-anchor="middle" font-weight="700">4 · Propose</text><text x="665" y="82" text-anchor="middle" fill-opacity=".8">preserve, contain,</text><text x="665" y="102" text-anchor="middle" fill-opacity=".8">eradicate: exact</text><text x="665" y="122" text-anchor="middle" fill-opacity=".8">command and undo</text>
+        <text x="860" y="58" text-anchor="middle" font-weight="700">5 · A person acts</text><text x="860" y="82" text-anchor="middle" fill-opacity=".8">approves, runs it,</text><text x="860" y="102" text-anchor="middle" fill-opacity=".8">and every step</text><text x="860" y="122" text-anchor="middle" fill-opacity=".8">is in the log</text>
+      </g>
+      <text x="480" y="182" text-anchor="middle" font-size="13" fill="currentColor" fill-opacity=".7" font-family="ui-monospace,monospace">the tool never runs a containment step; it cannot, because it holds no code that does</text>
+    </svg>
+  </div>
+  <p class="plain"><b>Safety by construction.</b> The list of collection commands is fixed in the code. A test fails if any of them uses a command that changes things, such as kill, rm, usermod, iptables, sc config, or PowerShell's Stop-, Set-, New-, Remove- or Disable-.</p>
+  <p class="plain">A value from the evidence, such as a process id, an address, an account or a path, is only put into a proposed command if it is in a safe form. It cannot start with a dash (an option), and it cannot hold a quote, <code>$</code>, <code>%</code>, <code>!</code> or a shell operator. Anything else becomes a "check by hand" step with no command at all, so crafted evidence cannot smuggle a command in.</p>
+  <p class="plain"><b>The log</b> is chained with SHA-256. Editing, removing or reordering an entry breaks verification at that entry. Someone with the file could still rewrite every hash after the entry they changed, and the chain alone cannot see that. So each step prints the latest hash for you to record somewhere else, such as the ticket or an email. Checked against that hash, every entry up to it is fixed. The demo above shows both cases.</p>
+</section>
+
+<section id="rules">
+  <h2>What it looks for</h2>
+  <div class="grid">
+    <div class="card"><h3>Linux</h3><ul class="plain"><li>a process running from <code>/tmp</code>, <code>/var/tmp</code> or <code>/dev/shm</code></li><li>a shell or netcat holding a network connection (a reverse or bind shell)</li><li>an account other than root with user id 0</li><li>five or more failed SSH logins, then a success, from one address</li><li>a scheduled job that runs from a temp folder, or downloads and runs code</li><li>an SSH <code>authorized_keys</code> file changed in the last 7 days</li></ul></div>
+    <div class="card"><h3>Windows</h3><ul class="plain"><li>a process running from a Temp or Public folder</li><li>a scheduled task that runs from a temp folder, runs encoded PowerShell, or fetches code (mshta, rundll32, download-and-run)</li><li>a service running from a temp folder or a user's AppData folder</li><li>five or more failed logons (4625), then a success (4624), from one address</li></ul></div>
+    <div class="card"><h3>What it proposes</h3><ul class="plain"><li><b>Preserve</b> first: copy the program or file, or record its hash.</li><li><b>Contain</b>: pause a process, lock or disable an account, block an address, disable a task, or disable and stop a service. Each comes with its exact undo.</li><li><b>Eradicate</b>: end a process. These are marked as not reversible.</li></ul></div>
+  </div>
+</section>
+
+<section id="blueprint">
+  <h2>The blueprint</h2>
+  <div class="grid">
+    <div class="card"><h3><code>ir.mjs</code></h3><p>The whole decision in one dependency-free file: the scope check, the read-only allow-list, the ten rules, the proposals, and the hash chain. Its tests are themselves tested: a mutation gate breaks the code on purpose, and every break must be caught. This page runs it byte for byte.</p></div>
+    <div class="card"><h3><code>bin/ir.mjs</code></h3><p>The command line you run on the host: <code>scope-template</code>, <code>collect</code> (with <code>--dry-run</code> to see exactly what it would run), <code>analyse</code>, <code>approve</code>, <code>verify-log</code>. Node 18 or later, no install.</p></div>
+    <div class="card"><h3>Proven on real hosts</h3><p>On every change, CI uses a throwaway GitHub Linux host and a throwaway Windows host. It plants real signs of compromise on each, checks that the tool refuses without an authorization for that host, then collects and analyses. Every planted sign must be found. Then each proposed command and its undo is run, and must do what it says. The log must verify, and must fail once an entry is edited.</p></div>
+  </div>
+</section>
+
+<section id="business">
+  <h2>For your business</h2>
+  <p class="plain"><b>In one breath:</b> when a machine may be compromised, the first hour decides a lot. IR Helper gives whoever is on call a repeatable first hour: authorized, evidence first, every step proposed with its undo, and every action on the record.</p>
+  <div class="grid">
+    <div class="card"><h3>IT manager or on-call engineer</h3><p>A checklist that runs itself: the same evidence every time, the facts with their source lines, and the commands written out. You decide and you act, with the undo in front of you.</p></div>
+    <div class="card"><h3>CISO</h3><p>Authorization enforced in the tool, not just in the policy. A tamper-evident record of who approved what and when, and no automated action that could make an incident worse.</p></div>
+    <div class="card"><h3>Managed service provider</h3><p>One method across clients' Windows and Linux hosts, with a scope file per client that names the hosts and the person who authorized the work.</p></div>
+    <div class="card"><h3>Finance</h3><p>MIT licence: no licence fee and no per-endpoint charge. It does not replace an incident-response retainer for a serious breach. It makes the first hour, and the hand-over to responders, faster and better documented.</p></div>
+    <div class="card"><h3>Legal and compliance</h3><p>Evidence is preserved before anything is changed, the authorization is recorded, and the log is chained. That is the record a regulator, an insurer or a court will ask for.</p></div>
+    <div class="card"><h3>The board</h3><p>Low cost, a clear limit (it proposes, a person acts), and a record of every decision. It cannot take an action on its own.</p></div>
+  </div>
+  <div class="grid" style="margin-top:14px">
+    <div class="card"><h3>Security and data protection</h3><p>It runs on the host and sends nothing anywhere. The evidence it gathers (process lists, logins, account names, IP addresses) is personal and sensitive. It stays in the evidence file on that host, so handle that file under your own retention policy. This page only shows synthetic data, and a file you analyse here stays in your browser.</p></div>
+    <div class="card"><h3>Deployment</h3><p>Keep a checkout on your admin tooling, or on removable media, so it is ready before you need it. Agree in advance who can authorize a response, and keep a filled-in scope template for each estate. Practise on a test host.</p></div>
+    <div class="card"><h3>Ownership, support and exit</h3><p>MIT, © Simon Gant. Supplier: <a href="https://www.ai-nativesolutions.com/">AI Native Solutions</a>. Support and liability are agreed in each deployment's agreement. There is no service behind it to stop.</p></div>
+  </div>
+</section>
+
+<section id="limits">
+  <h2>Limits, answered straight</h2>
+  <ul class="plain">
+    <li><b>Ten rules are not an EDR.</b> It finds common, well-known signs. A careful attacker can avoid all of them, so its silence is not an all-clear.</li>
+    <li><b>Linux and Windows only.</b> Some evidence needs administrator rights (the Windows Security log, other users' cron files). What it cannot read is listed in <code>evidence.errors</code>.</li>
+    <li><b>Windows task columns depend on the system language:</b> the scheduled-task rule reads the English column names. On other languages, check tasks by hand.</li>
+    <li><b>The Linux block proposals use <code>iptables</code>.</b> On hosts managed by <code>nftables</code>, <code>ufw</code> or a cloud firewall, use that tool instead.</li>
+    <li><b>Account steps cover local accounts.</b> A domain or directory account is disabled in your directory, not on the host.</li>
+    <li><b>Linux SSH logins are read from the systemd journal.</b> On a host that only writes <code>/var/log/auth.log</code> or <code>/var/log/secure</code>, check that file by hand.</li>
+    <li><b>It proposes, it does not remediate,</b> and a proposal is not legal or forensic advice. For a serious incident, bring in responders, and hand them the evidence file and the log.</li>
+  </ul>
+</section>
+
+</main>
+<footer><div class="wrap">
+  <p><b>Supplier:</b> <a href="https://www.ai-nativesolutions.com/">AI Native Solutions</a>. Built by Kar. Licence: MIT, © Simon Gant. Part of <a href="https://sjgant80-hub.github.io/sovereign-ai-security/">Sovereign AI-Security</a>. All demo data on this page is synthetic.</p>
+  <p class="note">No prices are shown on this page.</p>
+</div></footer>
+
+<script>
+/*IR:BEGIN*/
+const VERSION = 'kar-irhelper/1';
+const MAX_SCOPE_DAYS = 30;
+const DAY = 86400000;
+
+const isObj = (x) => x !== null && typeof x === 'object' && !Array.isArray(x);
+const str = (x) => (typeof x === 'string' ? x.trim() : '');
+const lines = (x) => (typeof x === 'string' ? x.split(/\r?\n/) : []);
+const ms = (x) => { const t = typeof x === 'string' ? Date.parse(x) : NaN; return Number.isFinite(t) ? t : NaN; };
+
+// ── sha256 (pure, so the browser and the command line compute the same chain) ─────────────────────────────────────
+const K = [0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3,
+  0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174, 0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+  0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967, 0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13,
+  0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+  0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3, 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208,
+  0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2];
+function sha256(text) {
+  const bytes = new TextEncoder().encode(typeof text === 'string' ? text : '');
+  const bitLen = bytes.length * 8;
+  const padded = new Uint8Array(((bytes.length + 9 + 63) >> 6) << 6);
+  padded.set(bytes);
+  padded[bytes.length] = 0x80;
+  const dv = new DataView(padded.buffer);
+  dv.setUint32(padded.length - 4, bitLen >>> 0);
+  dv.setUint32(padded.length - 8, Math.floor(bitLen / 0x100000000));
+  const h = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19];
+  // a plain array sized by its own loops: an off-by-one in either loop changes the hash, so the test vectors catch it
+  const w = [];
+  const rotr = (x, n) => (x >>> n) | (x << (32 - n));
+  for (let off = 0; off < padded.length; off += 64) {
+    w.length = 0;
+    for (let i = 0; i < 16; i++) w.push(dv.getUint32(off + i * 4));
+    for (let i = 16; i < 64; i++) {
+      const s0 = rotr(w[i - 15], 7) ^ rotr(w[i - 15], 18) ^ (w[i - 15] >>> 3), s1 = rotr(w[i - 2], 17) ^ rotr(w[i - 2], 19) ^ (w[i - 2] >>> 10);
+      w.push((w[i - 16] + s0 + w[i - 7] + s1) >>> 0);
+    }
+    let [a, b, c, d, e, f, g, hh] = h;
+    for (let i = 0; i < w.length; i++) {
+      const t1 = (hh + (rotr(e, 6) ^ rotr(e, 11) ^ rotr(e, 25)) + ((e & f) ^ (~e & g)) + K[i] + w[i]) >>> 0;
+      const t2 = ((rotr(a, 2) ^ rotr(a, 13) ^ rotr(a, 22)) + ((a & b) ^ (a & c) ^ (b & c))) >>> 0;
+      hh = g; g = f; f = e; e = (d + t1) >>> 0; d = c; c = b; b = a; a = (t1 + t2) >>> 0;
+    }
+    h[0] = (h[0] + a) >>> 0; h[1] = (h[1] + b) >>> 0; h[2] = (h[2] + c) >>> 0; h[3] = (h[3] + d) >>> 0;
+    h[4] = (h[4] + e) >>> 0; h[5] = (h[5] + f) >>> 0; h[6] = (h[6] + g) >>> 0; h[7] = (h[7] + hh) >>> 0;
+  }
+  return h.map((x) => x.toString(16).padStart(8, '0')).join('');
+}
+
+// ── scope: no recorded authorization, no run ─────────────────────────────────────────────────────────────────────
+// checkScope(scope, host, nowIso) → { ok, why[], summary } — why lists every reason it is refused
+function checkScope(scope, host, nowIso) {
+  const why = [];
+  if (!isObj(scope)) return { ok: false, why: ['the scope must be a JSON object (run: node bin/ir.mjs scope-template)'], summary: '' };
+  const by = str(scope.authorizedBy), purpose = str(scope.purpose), at = ms(scope.authorizedAt), until = ms(scope.expires), now = ms(nowIso);
+  const hosts = Array.isArray(scope.hosts) ? scope.hosts.map(str).filter((h) => h !== '') : [];
+  if (by === '') why.push('authorizedBy is required: the person who authorized this response');
+  if (purpose === '') why.push('purpose is required: why this response is authorized');
+  if (!Number.isFinite(at)) why.push('authorizedAt must be a date and time (ISO 8601)');
+  if (!Number.isFinite(until)) why.push('expires must be a date and time (ISO 8601)');
+  if (!Number.isFinite(now)) why.push('the current time could not be read');
+  if (hosts.length === 0) why.push('hosts must list the hosts this authorization covers');
+  if (Number.isFinite(at) && Number.isFinite(until) && until <= at) why.push('expires must be after authorizedAt');
+  if (Number.isFinite(at) && Number.isFinite(until) && until - at > MAX_SCOPE_DAYS * DAY) why.push('an authorization may last at most ' + MAX_SCOPE_DAYS + ' days');
+  if (Number.isFinite(at) && Number.isFinite(now) && at > now) why.push('authorizedAt is in the future');
+  if (Number.isFinite(until) && Number.isFinite(now) && now >= until) why.push('this authorization has expired');
+  const h = str(host).toLowerCase();
+  if (h === '') why.push('the host being examined has no name');
+  else if (hosts.length > 0 && !hosts.some((x) => x.toLowerCase() === h)) why.push('host "' + str(host) + '" is not in this authorization\'s hosts');
+  const summary = why.length === 0 ? 'authorized by ' + by + ' at ' + new Date(at).toISOString() + ' for: ' + purpose + ' · hosts: ' + hosts.join(', ') + ' · until ' + new Date(until).toISOString() : '';
+  return { ok: why.length === 0, why, summary };
+}
+
+// ── the read-only allow-list ─────────────────────────────────────────────────────────────────────────────────────
+// Commands run with no shell (argv as given). Files are read, never written. Nothing outside this list is ever run.
+const PS = (cmd) => Object.freeze(['powershell.exe', '-NoProfile', '-NonInteractive', '-Command', cmd]);
+const COLLECT = Object.freeze({
+  linux: Object.freeze({
+    commands: Object.freeze([
+      Object.freeze({ id: 'processes', argv: Object.freeze(['ps', '-eo', 'pid,user,lstart,args', '--no-headers']), shows: 'running processes, their owner, start time and command line' }),
+      Object.freeze({ id: 'sockets', argv: Object.freeze(['ss', '-tunap']), shows: 'network sockets and the process holding each' }),
+      Object.freeze({ id: 'accounts', argv: Object.freeze(['getent', 'passwd']), shows: 'local accounts and their user ids' }),
+      Object.freeze({ id: 'ssh-log', argv: Object.freeze(['journalctl', '-u', 'ssh', '-u', 'sshd', '--since', '-24h', '--no-pager', '-o', 'short-iso']), shows: 'the last day of SSH logins, failed and accepted' }),
+    ]),
+    files: Object.freeze([
+      Object.freeze({ id: 'cron', paths: Object.freeze(['/etc/crontab', '/etc/cron.d/*', '/var/spool/cron/crontabs/*']), shows: 'scheduled jobs' }),
+      Object.freeze({ id: 'ssh-keys', paths: Object.freeze(['/root/.ssh/authorized_keys', '/home/*/.ssh/authorized_keys']), shows: 'keys that can log in, and when each file last changed' }),
+    ]),
+  }),
+  windows: Object.freeze({
+    commands: Object.freeze([
+      Object.freeze({ id: 'processes', argv: PS('Get-CimInstance Win32_Process | Select-Object ProcessId,Name,ExecutablePath,CommandLine | ConvertTo-Csv -NoTypeInformation'), shows: 'running processes, their file and command line' }),
+      Object.freeze({ id: 'tasks', argv: Object.freeze(['schtasks.exe', '/query', '/fo', 'csv', '/v']), shows: 'scheduled tasks and what each runs' }),
+      Object.freeze({ id: 'services', argv: PS('Get-CimInstance Win32_Service | Select-Object Name,State,StartMode,PathName | ConvertTo-Csv -NoTypeInformation'), shows: 'services, their state and file' }),
+      Object.freeze({ id: 'logons', argv: PS("Get-WinEvent -FilterHashtable @{LogName='Security';Id=4624,4625;StartTime=(Get-Date).AddDays(-1)} -ErrorAction SilentlyContinue | ForEach-Object { $x=[xml]$_.ToXml(); $d=@{}; $x.Event.EventData.Data | ForEach-Object { $d[$_.Name]=$_.'#text' }; [pscustomobject]@{Time=$_.TimeCreated.ToUniversalTime().ToString('o');Id=$_.Id;User=$d['TargetUserName'];Ip=$d['IpAddress']} } | ConvertTo-Csv -NoTypeInformation"), shows: 'the last day of successful and failed logons' }),
+    ]),
+    files: Object.freeze([]),
+  }),
+});
+
+// collectionPlan(os) → the commands and files for that OS, or null for an OS it does not know
+function collectionPlan(os) {
+  return typeof os === 'string' && Object.prototype.hasOwnProperty.call(COLLECT, os) ? COLLECT[os] : null;
+}
+
+// ── parsing helpers ──────────────────────────────────────────────────────────────────────────────────────────────
+function parseCsv(text) {
+  const rows = [];
+  let row = [], field = '', q = false;
+  const s = typeof text === 'string' ? text : '';
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (q) { if (c === '"' && s[i + 1] === '"') { field += '"'; i++; } else if (c === '"') q = false; else field += c; continue; }
+    if (c === '"') q = true;
+    else if (c === ',') { row.push(field); field = ''; }
+    else if (c === '\n' || c === '\r') { row.push(field); rows.push(row); row = []; field = ''; } // a CRLF leaves an empty row, dropped below
+    else field += c;
+  }
+  row.push(field); rows.push(row);
+  const head = (rows.shift() || []).map((h) => h.trim());
+  return rows.filter((r) => r.some((x) => x.trim() !== '')).map((r) => Object.fromEntries(head.map((h, i) => [h, r[i] === undefined ? '' : r[i]])));
+}
+
+const TEMP_LINUX = /^(\/tmp\/|\/var\/tmp\/|\/dev\/shm\/)/;
+const TEMP_WIN = /\\(appdata\\local\\temp|windows\\temp|users\\public)\\/i;
+const SHELLS = new Set(['bash', 'sh', 'dash', 'zsh', 'ksh', 'nc', 'ncat', 'netcat', 'socat']);
+const CRON_BAD = /(\/tmp\/|\/var\/tmp\/|\/dev\/shm\/|(curl|wget)\b[^|]*\|\s*(ba)?sh\b|base64\s+(-d|--decode))/;
+// -e/-ec/-enc/-encodedcommand only counts after powershell or pwsh: plenty of programs take a harmless -e
+const TASK_BAD = /(\\(appdata\\local\\temp|windows\\temp|users\\public)\\|(powershell|pwsh)(\.exe)?\b.*\s-(e|ec|enc|encodedcommand)\s|mshta(\.exe)?\s+https?:|rundll32(\.exe)?\s+.*https?:|(powershell|pwsh)(\.exe)?\b.*\b(iwr|invoke-webrequest|downloadstring)\b)/i;
+const IPV4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/;
+const BRUTE_FAILURES = 5;
+
+// ── analyse: evidence → facts → proposals ────────────────────────────────────────────────────────────────────────
+// evidence: { os, host, collectedAt, outputs: { <command id>: text }, files: [{ id, path, mtime, text }] }
+function analyse(evidence) {
+  if (!isObj(evidence)) return { ok: false, why: 'give an evidence bundle (from: node bin/ir.mjs collect)' };
+  const os = evidence.os;
+  if (collectionPlan(os) === null) return { ok: false, why: 'unknown os: use "linux" or "windows"' };
+  const out = isObj(evidence.outputs) ? evidence.outputs : {};
+  const files = Array.isArray(evidence.files) ? evidence.files.filter(isObj) : [];
+  const at = ms(evidence.collectedAt);
+  const facts = [];
+  const fact = (rule, title, severity, source, line, detail) => facts.push({ id: 'F' + (facts.length + 1), rule, title, severity, source, line, detail });
+
+  if (os === 'linux') {
+    lines(out.processes).forEach((l, i) => {
+      const m = l.trim().match(/^(\d+)\s+(\S+)\s+\w{3}\s+\w{3}\s+\d+\s+[\d:]+\s+\d{4}\s+(.+)$/);
+      if (m !== null && TEMP_LINUX.test(m[3])) fact('proc-temp', 'A process is running from a temporary folder', 'high', 'command: processes', i + 1, { pid: m[1], user: m[2], command: m[3] });
+    });
+    lines(out.sockets).forEach((l, i) => {
+      const m = l.match(/^(\S+)\s+(\S+)\s+\d+\s+\d+\s+(\S+)\s+(\S+)\s+users:\(\("([^"]+)",pid=(\d+)/);
+      if (m !== null && SHELLS.has(m[5]) && (m[2] === 'ESTAB' || m[2] === 'LISTEN')) fact('shell-socket', 'A shell or netcat is holding a network connection', 'high', 'command: sockets', i + 1, { pid: m[6], program: m[5], state: m[2], local: m[3], peer: m[4] });
+    });
+    lines(out.accounts).forEach((l, i) => {
+      const p = l.split(':');
+      if (p.length >= 7 && p[2] === '0' && p[0] !== 'root') fact('uid0', 'An account other than root has user id 0 (full control)', 'high', 'command: accounts', i + 1, { user: p[0] });
+    });
+    const tries = new Map();
+    lines(out['ssh-log']).forEach((l, i) => {
+      const f = l.match(/Failed password for (?:invalid user )?(\S+) from (\S+)/), a = l.match(/Accepted (?:password|publickey|keyboard-interactive\/pam) for (\S+) from (\S+)/);
+      if (f !== null) { const t = tries.get(f[2]) || { fails: 0, users: new Set(), success: null }; t.fails = t.fails + 1; t.users.add(f[1]); tries.set(f[2], t); }
+      if (a !== null) { const t = tries.get(a[2]); if (t !== undefined && t.fails >= BRUTE_FAILURES && t.success === null) t.success = { user: a[1], line: i + 1 }; }
+    });
+    for (const [ip, t] of tries) if (t.success !== null) fact('brute-then-success', 'Repeated failed logins, then a successful one, from the same address', 'high', 'command: ssh-log', t.success.line, { ip, user: t.success.user, failures: t.fails });
+    for (const f of files) {
+      if (f.id === 'cron') lines(f.text).forEach((l, i) => { const s = l.trim(); if (s !== '' && !s.startsWith('#') && CRON_BAD.test(s)) fact('cron-suspicious', 'A scheduled job runs from a temporary folder, or downloads and runs code', 'high', 'file: ' + str(f.path), i + 1, { path: str(f.path), line: s }); });
+      if (f.id === 'ssh-keys') { const age = at - ms(f.mtime); if (Number.isFinite(age) && age >= 0 && age <= 7 * DAY) fact('keys-recent', 'An SSH authorized_keys file changed in the last 7 days', 'medium', 'file: ' + str(f.path), 0, { path: str(f.path), changed: str(f.mtime) }); }
+    }
+  } else {
+    parseCsv(out.processes).forEach((r, i) => { if (TEMP_WIN.test(str(r.ExecutablePath))) fact('proc-temp', 'A process is running from a temporary or public folder', 'high', 'command: processes', i + 2, { pid: str(r.ProcessId), name: str(r.Name), path: str(r.ExecutablePath) }); });
+    parseCsv(out.tasks).forEach((r, i) => { const run = str(r['Task To Run']); if (TASK_BAD.test(' ' + run + ' ')) fact('task-suspicious', 'A scheduled task runs from a temporary folder, runs encoded PowerShell, or fetches code', 'high', 'command: tasks', i + 2, { task: str(r.TaskName), runs: run }); });
+    parseCsv(out.services).forEach((r, i) => { if (TEMP_WIN.test(str(r.PathName)) || /\\appdata\\/i.test(str(r.PathName))) fact('service-temp', 'A service runs from a temporary folder or a user\'s AppData folder', 'high', 'command: services', i + 2, { service: str(r.Name), path: str(r.PathName), startMode: str(r.StartMode), state: str(r.State) }); });
+    const tries = new Map();
+    parseCsv(out.logons).sort((a, b) => ms(a.Time) - ms(b.Time)).forEach((r, i) => {
+      const ip = str(r.Ip), user = str(r.User);
+      if (ip === '' || ip === '-') return;
+      const t = tries.get(ip) || { fails: 0, success: null };
+      if (str(r.Id) === '4625') t.fails = t.fails + 1;
+      if (str(r.Id) === '4624' && t.fails >= BRUTE_FAILURES && t.success === null) t.success = { user, line: i + 2 };
+      tries.set(ip, t);
+    });
+    for (const [ip, t] of tries) if (t.success !== null) fact('brute-then-success', 'Repeated failed logons, then a successful one, from the same address', 'high', 'command: logons', t.success.line, { ip, user: t.success.user, failures: t.fails });
+  }
+  return { ok: true, os, host: str(evidence.host), facts, proposals: facts.flatMap((f) => propose(os, f)) };
+}
+
+// ── proposals: what a person could do, with the exact command and its undo ─────────────────────────────────────────
+// A value only goes into a command if it is safe there: a pid of digits, an IPv4 address, a plain account or task
+// name, a path without quotes or shell metacharacters. Anything else becomes a "check by hand" step with no command.
+// A name may not start with "-" (it would be read as an option) and holds no "$" (a shell would expand it). A path holds
+// nothing a shell or cmd.exe would act on inside double quotes; a Linux path must be absolute. PowerShell values go in
+// single quotes, where nothing is expanded, and no safe value holds a quote.
+const safePid = (x) => /^\d{1,10}$/.test(x);
+function safeIp(x) { const m = typeof x === 'string' ? x.match(IPV4) : null; return m !== null && m.slice(1).every((o) => Number(o) <= 255); }
+const safeName = (x) => typeof x === 'string' && /^[A-Za-z0-9_][A-Za-z0-9._\-]{0,63}$/.test(x);
+const safePath = (x) => typeof x === 'string' && x !== '' && !/["'`$;&|<>\n\r!%]/.test(x);
+const safeLinuxPath = (x) => safePath(x) && x.startsWith('/') && !x.includes('\\');
+const safeTask = (x) => typeof x === 'string' && /^\\?[A-Za-z0-9 ._\-\\]{1,200}$/.test(x);
+
+// commandLine(argv) → the line a person types to run it. A plain argument is left as it is; any other is wrapped in
+// double quotes (no argument a proposal builds holds a double quote, so the quoting is exact).
+function commandLine(argv) {
+  return Array.isArray(argv) ? argv.map((a) => (/^[A-Za-z0-9._\-\/:=@,+]+$/.test(String(a)) ? String(a) : '"' + String(a) + '"')).join(' ') : '';
+}
+
+function step(f, n, kind, does, run, undo) {
+  return { id: f.id + '.' + n, fact: f.id, kind, does, run: run === null ? null : Object.freeze(run), undo: undo === null ? null : Object.freeze(undo), reversible: undo !== null };
+}
+function byHand(f, n, does) { return { id: f.id + '.' + n, fact: f.id, kind: 'check', does, run: null, undo: null, reversible: true }; }
+
+function propose(os, f) {
+  if (!isObj(f) || !isObj(f.detail)) return [];
+  const d = f.detail;
+  if (os === 'linux') {
+    if (f.rule === 'proc-temp' || f.rule === 'shell-socket') {
+      if (!safePid(d.pid)) return [byHand(f, 1, 'Check this process by hand: its id is not in the expected form')];
+      return [
+        step(f, 1, 'preserve', 'Save a copy of the running program for analysis', ['cp', '/proc/' + d.pid + '/exe', '/var/tmp/ir-evidence-' + d.pid + '.bin'], null),
+        step(f, 2, 'contain', 'Pause the process (it keeps its memory, and can be resumed)', ['kill', '-STOP', d.pid], ['kill', '-CONT', d.pid]),
+        step(f, 3, 'eradicate', 'End the process (cannot be undone)', ['kill', '-KILL', d.pid], null),
+      ];
+    }
+    if (f.rule === 'uid0') return safeName(d.user) ? [step(f, 1, 'contain', 'Lock the account', ['usermod', '-L', d.user], ['usermod', '-U', d.user])] : [byHand(f, 1, 'Check this account by hand: its name is not in the expected form')];
+    if (f.rule === 'brute-then-success') {
+      const p = [];
+      if (safeIp(d.ip)) p.push(step(f, p.length + 1, 'contain', 'Block the address', ['iptables', '-I', 'INPUT', '-s', d.ip, '-j', 'DROP'], ['iptables', '-D', 'INPUT', '-s', d.ip, '-j', 'DROP']));
+      if (safeName(d.user)) p.push(step(f, p.length + 1, 'contain', 'Lock the account that was logged into', ['usermod', '-L', d.user], ['usermod', '-U', d.user]));
+      return p.length > 0 ? p : [byHand(f, 1, 'Check this login by hand: the address or account is not in the expected form')];
+    }
+    if (f.rule === 'cron-suspicious' || f.rule === 'keys-recent') {
+      if (!safeLinuxPath(d.path)) return [byHand(f, 1, 'Check this file by hand: its path is not in the expected form')];
+      return [step(f, 1, 'preserve', 'Save a copy of the file', ['cp', '-p', d.path, d.path + '.ir-evidence'], null),
+        byHand(f, 2, f.rule === 'cron-suspicious' ? 'Remove or comment out the job after reviewing it' : 'Review each key, and remove any you do not recognise')];
+    }
+    return [];
+  }
+  if (f.rule === 'proc-temp') {
+    const p = [];
+    if (safePath(d.path)) p.push(step(f, 1, 'preserve', 'Record the file\'s hash for analysis', ['powershell.exe', '-NoProfile', '-Command', 'Get-FileHash -LiteralPath \'' + d.path + '\' | Format-List'], null));
+    if (safePid(d.pid)) p.push(step(f, p.length + 1, 'eradicate', 'End the process (cannot be undone)', ['taskkill.exe', '/PID', d.pid, '/F'], null));
+    return p.length > 0 ? p : [byHand(f, 1, 'Check this process by hand: its id or path is not in the expected form')];
+  }
+  if (f.rule === 'task-suspicious') return safeTask(d.task) ? [step(f, 1, 'contain', 'Disable the scheduled task', ['schtasks.exe', '/change', '/tn', d.task, '/disable'], ['schtasks.exe', '/change', '/tn', d.task, '/enable'])] : [byHand(f, 1, 'Check this task by hand: its name is not in the expected form')];
+  if (f.rule === 'service-temp') {
+    if (!safeName(d.service)) return [byHand(f, 1, 'Check this service by hand: its name is not in the expected form')];
+    const back = { Auto: 'auto', Manual: 'demand', Disabled: 'disabled' }[str(d.startMode)] || 'demand';
+    const p = [step(f, 1, 'contain', 'Stop the service starting again (it stays disabled until undone)', ['sc.exe', 'config', d.service, 'start=', 'disabled'], ['sc.exe', 'config', d.service, 'start=', back])];
+    if (str(d.state) === 'Running') p.push(step(f, 2, 'contain', 'Stop the running service', ['sc.exe', 'stop', d.service], ['sc.exe', 'start', d.service]));
+    return p;
+  }
+  if (f.rule === 'brute-then-success') {
+    const p = [];
+    if (safeIp(d.ip)) p.push(step(f, 1, 'contain', 'Block the address in Windows Firewall', ['powershell.exe', '-NoProfile', '-Command', 'New-NetFirewallRule -DisplayName \'IR block ' + d.ip + '\' -Direction Inbound -RemoteAddress ' + d.ip + ' -Action Block'], ['powershell.exe', '-NoProfile', '-Command', 'Remove-NetFirewallRule -DisplayName \'IR block ' + d.ip + '\'']));
+    if (safeName(d.user)) p.push(step(f, p.length + 1, 'contain', 'Disable the local account that was logged into', ['powershell.exe', '-NoProfile', '-Command', 'Disable-LocalUser -Name \'' + d.user + '\''], ['powershell.exe', '-NoProfile', '-Command', 'Enable-LocalUser -Name \'' + d.user + '\'']));
+    return p.length > 0 ? p : [byHand(f, 1, 'Check this logon by hand: the address or account is not in the expected form')];
+  }
+  return [];
+}
+
+// ── the log: every collection, analysis, approval and refusal, chained by hash ────────────────────────────────────
+// entry = { seq, at, kind, data, prev, hash }, hash = sha256(seq|at|kind|JSON(data)|prev)
+const entryHash = (e) => sha256(e.seq + '|' + e.at + '|' + e.kind + '|' + JSON.stringify(e.data) + '|' + e.prev);
+function append(log, kind, data, at) {
+  const list = Array.isArray(log) ? log : [];
+  const last = list[list.length - 1];
+  const prev = isObj(last) ? str(last.hash) : 'genesis';
+  const e = { seq: list.length + 1, at: str(at), kind: str(kind), data: data === undefined ? null : data, prev };
+  return list.concat([{ ...e, hash: entryHash(e) }]);
+}
+// verifyLog(log, anchor?) → { ok, entries, brokenAt, anchoredAt } — brokenAt is the seq of the first entry that does
+// not match. The chain alone catches an edit, a removal or a reordering, but not someone who rewrites every hash after
+// the entry they changed. So record the latest hash somewhere else (the ticket, an email): given as anchor, it must
+// still be in the chain, which fixes every entry up to it.
+function verifyLog(log, anchor) {
+  if (!Array.isArray(log)) return { ok: false, entries: 0, brokenAt: 0, anchoredAt: null };
+  const want = str(anchor);
+  let prev = 'genesis', at = null;
+  for (let i = 0; i < log.length; i++) {
+    const e = log[i];
+    if (!isObj(e) || e.seq !== i + 1 || e.prev !== prev || e.hash !== entryHash(e)) return { ok: false, entries: log.length, brokenAt: i + 1, anchoredAt: null };
+    if (e.hash === want) at = e.seq;
+    prev = e.hash;
+  }
+  return { ok: want === '' || at !== null, entries: log.length, brokenAt: null, anchoredAt: at };
+}
+/*IR:END*/
+const IR = { VERSION, MAX_SCOPE_DAYS, BRUTE_FAILURES, sha256, checkScope, COLLECT, collectionPlan, parseCsv, analyse, propose, safeIp, commandLine, append, verifyLog };
+
+(function () {
+  const $ = (id) => document.getElementById(id);
+  const el = (tag, props, ...kids) => { const n = Object.assign(document.createElement(tag), props || {}); n.append(...kids); return n; };
+  const root = document.documentElement;
+  try { const th = localStorage.getItem('ir-theme'); if (th === 'light' || th === 'dark') root.setAttribute('data-theme', th); } catch (e) { /* no storage */ }
+  $('theme').addEventListener('click', () => { const now = root.getAttribute('data-theme') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'); const next = now === 'dark' ? 'light' : 'dark'; root.setAttribute('data-theme', next); try { localStorage.setItem('ir-theme', next); } catch (e) { /* no storage */ } });
+
+  const show = IR.commandLine;
+  let demo = { linux: null, windows: null, scope: null }, os = 'linux', evidence = null, log = [], authorized = false, anchor = '';
+  const stamp = () => evidence ? evidence.collectedAt : new Date().toISOString();
+  const addLog = (kind, data) => { log = IR.append(log, kind, data, stamp()); drawLog(); };
+  const line = (e, edited) => '#' + e.seq + ' ' + e.kind + ' · ' + (edited ? '(edited) ' : '') + JSON.stringify(e.data).slice(0, 70) + ' · ' + e.hash.slice(0, 12) + '…';
+  function drawLog(edited) {
+    $('log').replaceChildren(...(log.length ? log.map((e, k) => el('div', { className: 'logline', textContent: line(e, k === edited) })) : [el('p', { className: 'note', textContent: 'Empty.' })]));
+    const last = log[log.length - 1];
+    $('head').textContent = (last ? 'Latest hash: ' + last.hash.slice(0, 16) + '…' : '') + (anchor ? (last ? ' · ' : '') + 'Recorded in the ticket: ' + anchor.slice(0, 16) + '…' : '');
+    $('log-verdict').replaceChildren();
+  }
+  const verdict = (box, ok, head, items) => {
+    const v = el('div', { className: 'verdict ' + (ok ? 'ok' : 'no') }, el('b', { textContent: head }));
+    if (items && items.length) v.append(el('ul', {}, ...items.map((t) => el('li', { textContent: t }))));
+    box.replaceChildren(v);
+  };
+
+  async function load() {
+    const get = (p) => fetch(p).then((r) => r.json());
+    [demo.linux, demo.windows, demo.scope] = await Promise.all([get('data/demo-linux.json'), get('data/demo-windows.json'), get('data/demo-scope.json')]);
+    pick('linux');
+  }
+  function pick(which) {
+    os = which; evidence = demo[which]; authorized = false; log = []; anchor = '';
+    $('pick-linux').className = 'btn' + (which === 'linux' ? '' : ' ghost'); $('pick-linux').setAttribute('aria-pressed', String(which === 'linux'));
+    $('pick-windows').className = 'btn' + (which === 'windows' ? '' : ' ghost'); $('pick-windows').setAttribute('aria-pressed', String(which === 'windows'));
+    $('scope').value = JSON.stringify(demo.scope, null, 2);
+    $('scope-verdict').replaceChildren(); $('analyse').disabled = true;
+    $('facts').replaceChildren(el('p', { className: 'note', textContent: 'Check the authorization first.' }));
+    drawLog();
+  }
+  function check() {
+    let s;
+    try { s = JSON.parse($('scope').value); } catch (e) { verdict($('scope-verdict'), false, 'That is not valid JSON: ' + e.message); return; }
+    const r = IR.checkScope(s, evidence.host, evidence.collectedAt);
+    authorized = r.ok;
+    if (r.ok) { verdict($('scope-verdict'), true, 'Authorized for ' + evidence.host + '.', [r.summary]); addLog('scope', { host: evidence.host, summary: r.summary }); addLog('collect', { host: evidence.host, synthetic: true, commands: Object.keys(evidence.outputs).length, files: evidence.files.length, sha256: IR.sha256(JSON.stringify(evidence)) }); }
+    else {
+      verdict($('scope-verdict'), false, 'Refused: nothing would be collected.', r.why); addLog('refused', { host: evidence.host, why: r.why });
+      $('facts').replaceChildren(el('p', { className: 'note', textContent: 'Refused, so nothing was collected and there is nothing to analyse or approve.' }));
+    }
+    $('analyse').disabled = !r.ok;
+  }
+  const tweak = (f) => { const s = JSON.parse(JSON.stringify(demo.scope)); f(s); $('scope').value = JSON.stringify(s, null, 2); check(); };
+
+  function render(r, sourceNote) {
+    if (!r.ok) { $('facts').replaceChildren(el('p', { className: 'note', textContent: r.why })); return; }
+    const list = r.facts.map((f) => {
+      const props = r.proposals.filter((p) => p.fact === f.id).map((p) => {
+        const box = el('div', { className: 'prop ' + p.kind }, el('div', {}, el('span', { className: 'kind', textContent: p.id + ' · ' + p.kind }), p.does));
+        if (p.run) {
+          box.append(el('pre', { textContent: show(p.run) }), el('div', { className: 'note', textContent: p.undo ? 'undo: ' + show(p.undo) : p.kind === 'preserve' ? 'keeps evidence; changes nothing else' : 'cannot be undone' }));
+          const out = el('div');
+          const b = el('button', { className: 'btn ghost', type: 'button', textContent: 'Approve' });
+          b.addEventListener('click', () => {
+            const by = $('approver').value.trim();
+            if (by === '') { out.replaceChildren(el('div', { className: 'verdict no', textContent: 'Enter the approver\'s name first.' })); return; }
+            addLog('approve', { proposal: p.id, by, run: p.run, undo: p.undo });
+            b.disabled = true; b.textContent = 'Approved';
+            out.replaceChildren(el('div', { className: 'verdict ok' }, el('b', { textContent: 'Approved by ' + by + '. This page runs nothing. On the host, ' + by + ' would now run:' }), el('pre', { textContent: show(p.run) })));
+          });
+          box.append(el('div', { className: 'row' }, b), out);
+        }
+        return box;
+      });
+      return el('div', { className: 'fact' }, el('h3', {}, el('span', { className: 'sev ' + f.severity, textContent: f.severity }), f.id + ' · ' + f.title),
+        el('div', { className: 'src', textContent: 'found in ' + f.source + (f.line ? ', line ' + f.line : '') + ' · ' + JSON.stringify(f.detail) }), ...props);
+    });
+    $('facts').replaceChildren(el('p', { className: 'note', textContent: r.facts.length + ' fact(s) on ' + r.host + ' · ' + r.proposals.length + ' proposal(s)' + (sourceNote ? ' · ' + sourceNote : '') }), ...list);
+  }
+
+  $('pick-linux').addEventListener('click', () => pick('linux'));
+  $('pick-windows').addEventListener('click', () => pick('windows'));
+  $('check').addEventListener('click', check);
+  $('t-expired').addEventListener('click', () => tweak((s) => { s.expires = '2026-11-16T11:00:00Z'; }));
+  $('t-host').addEventListener('click', () => tweak((s) => { s.hosts = ['db1']; }));
+  $('t-unsigned').addEventListener('click', () => tweak((s) => { s.authorizedBy = ''; }));
+  $('analyse').addEventListener('click', () => { if (!authorized) return; const r = IR.analyse(evidence); addLog('analyse', { facts: r.facts.length, proposals: r.proposals.length }); render(r, 'synthetic evidence'); });
+  $('record').addEventListener('click', () => {
+    if (log.length === 0) { verdict($('log-verdict'), false, 'The log is empty: check the authorization first.'); return; }
+    anchor = log[log.length - 1].hash; drawLog();
+    verdict($('log-verdict'), true, 'Recorded. On a real host you would paste this hash into the ticket or an email, outside the log file.');
+  });
+  $('verify').addEventListener('click', () => {
+    const v = IR.verifyLog(log, anchor);
+    const head = v.brokenAt !== null ? 'Does NOT verify: entry ' + v.brokenAt + ' of ' + v.entries + ' was changed, removed or reordered.'
+      : !v.ok ? 'Does NOT verify: the chain holds together, but the hash recorded in the ticket is not in it. The log was rewritten after that hash was recorded.'
+      : 'Intact: ' + v.entries + ' entries, each chained to the one before' + (v.anchoredAt !== null ? ', and the hash recorded in the ticket is entry ' + v.anchoredAt + '.' : '. Record the latest hash to also catch a rewrite of the whole chain.');
+    verdict($('log-verdict'), v.ok, head);
+  });
+  // the tampering: change entry 2 (the collection record); a forger who also rewrites every later hash gets a chain that holds
+  const edit = (rewrite) => {
+    if (log.length < 2) { verdict($('log-verdict'), false, 'Check the authorization first, so there is something to tamper with.'); return; }
+    const forged = log.map((e, k) => (k === 1 ? { ...e, data: { ...(e.data || {}), edited: 'someone changed this entry afterwards' } } : e));
+    log = rewrite ? forged.reduce((acc, e) => IR.append(acc, e.kind, e.data, e.at), []) : forged;
+    drawLog(1);
+    verdict($('log-verdict'), false, rewrite ? 'Entry 2 was edited, and every hash after it was rewritten so the chain holds together. Now press "Verify the log".' : 'Entry 2 was edited, and its hash was left as it was. Now press "Verify the log".');
+  };
+  $('tamper').addEventListener('click', () => edit(false));
+  $('rewrite').addEventListener('click', () => edit(true));
+  $('file').addEventListener('change', async (ev) => {
+    const f = ev.target.files && ev.target.files[0]; if (!f) return;
+    try { const ev2 = JSON.parse(await f.text()); render(IR.analyse(ev2), 'your file ' + f.name + ' (read in this browser, not uploaded; its authorization was checked when it was collected: ' + (typeof ev2.scope === 'string' ? ev2.scope : 'not recorded') + ')'); }
+    catch (e) { $('facts').replaceChildren(el('p', { className: 'note', textContent: 'Could not read that file: ' + e.message })); }
+  });
+  load().catch((e) => { $('facts').replaceChildren(el('p', { className: 'note', textContent: 'The demo data could not be loaded here (' + e.message + '). Open the page from its web address.' })); });
+})();
+</script>
+</body>
+</html>

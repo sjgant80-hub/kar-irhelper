@@ -1,0 +1,10 @@
+{
+ "authorizedBy": "A. Patel, Head of IT (demo)",
+ "purpose": "Suspected compromise reported by the SOC (demo)",
+ "authorizedAt": "2026-11-16T09:00:00Z",
+ "expires": "2026-11-17T09:00:00Z",
+ "hosts": [
+  "web1",
+  "DESK7"
+ ]
+}

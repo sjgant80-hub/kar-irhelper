@@ -1,0 +1,83 @@
+name: gate
+# A page IS the product here, so the gate checks the page rather than pretending there is a kernel
+# to mutate. Adding a mutation gate to a repo with no tests would print a verdict about nothing,
+# which is the test-theatre this estate exists to catch.
+#
+# Four checks, each one a real failure mode that has actually shipped in this estate:
+#   · the HTML parses and every inline script parses  — a page that 404s its own JS is a dead app
+#   · no unresolved template placeholder is served    — __THING__ reaching a visitor
+#   · every same-repo href/src resolves to a real file — the dead-link class
+#   · no obvious secret is committed                  — keys have leaked from pages before
+#
+# 2026-11-16 fixes, each a false alarm the gate raised on a working page (none loosens a real check):
+#   · only JavaScript is parsed as JavaScript: an import map or JSON-LD block is data, not code
+#   · a link the page's own JavaScript builds at runtime (${...} or '+...+') is not a file path, so it
+#     cannot be checked here; it is skipped and COUNTED in the verdict, never silently passed
+#   · actions are pinned to full commit SHAs (some repos require it, and it is the safer default)
+#   · a page served by its own local server may link a server ROUTE (e.g. /dashboard). The repo declares each
+#     route and the file it serves in .gate-routes.json; the gate then checks that file exists instead
+#     (a route whose file is missing still fails). No file, no routes: every link is checked as a file.
+on: [push, pull_request, workflow_dispatch]
+jobs:
+  page:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with: { node-version: '22' }
+      - name: the page is actually a working page
+        run: |
+          node -e "
+          const fs=require('fs'), path=require('path');
+          const html=fs.readdirSync('.').filter(f=>f.endsWith('.html'));
+          if(!html.length){ console.error('no HTML in this repo — nothing to serve'); process.exit(1); }
+          let fail=0, built=0, routed=0;
+          const DOLLAR_BRACE=String.fromCharCode(36,123);
+          let ROUTES={};
+          if(fs.existsSync('.gate-routes.json')){
+            try { ROUTES=JSON.parse(fs.readFileSync('.gate-routes.json','utf8')); } catch(e){ console.error('.gate-routes.json does not parse: '+e.message); fail=1; }
+            if(!ROUTES || typeof ROUTES!=='object' || Array.isArray(ROUTES)){ console.error('.gate-routes.json must map each route to the file it serves'); ROUTES={}; fail=1; }
+          }
+          for(const f of html){
+            const s=fs.readFileSync(f,'utf8');
+
+            // 1. every inline script must parse. A syntax error means the page loads and does nothing.
+            //    Only JavaScript is parsed: a block typed as data (importmap, JSON, JSON-LD, a template) is not code.
+            const blocks=[...s.matchAll(/<script(?![^>]*\bsrc=)([^>]*)>([\s\S]*?)<\/script>/g)];
+            blocks.forEach((m,i)=>{
+              const ty=((m[1].match(/\btype\s*=\s*.?([a-z0-9\/+.-]+)/i)||[])[1]||'').toLowerCase();
+              if(ty && !/^(module|text\/javascript|application\/javascript)$/.test(ty)) return;
+              try { new (require('vm').Script)(m[2].replace(/^\s*import\s.*$/gm,'').replace(/^\s*export\s/gm,'')); }
+              catch(e){ if(!/await is only valid|Unexpected token 'export'|Cannot use import/.test(e.message)){ console.error(f+' script['+i+'] DOES NOT PARSE: '+e.message); fail=1; } }
+            });
+
+            // 2. an unresolved placeholder means a generator ran and did not finish.
+            const ph=s.match(/__[A-Z][A-Z0-9_]*__/g);
+            if(ph){ console.error(f+' serves unresolved placeholders: '+[...new Set(ph)].join(', ')); fail=1; }
+
+            // 3. a same-repo link that points at nothing is a dead control.
+            //    A link the page's JavaScript builds at runtime is not a file path; it is counted, not checked.
+            for(const m of s.matchAll(/(?:href|src)=\"(?!https?:|data:|mailto:|#|\/\/)([^\"?#]+)/g)){
+              const t=m[1].replace(/^\.\//,'');
+              if(t.includes(DOLLAR_BRACE) || /['\"\`]\s*\+|\+\s*['\"\`]/.test(t)){ built++; continue; }
+              if(Object.prototype.hasOwnProperty.call(ROUTES,t)){
+                if(typeof ROUTES[t]!=='string' || !fs.existsSync(ROUTES[t])){ console.error(f+' links to the route '+t+', but the file it serves is not here: '+ROUTES[t]); fail=1; }
+                routed++; continue;
+              }
+              if(t && !fs.existsSync(t)){ console.error(f+' links to a file that is not here: '+t); fail=1; }
+            }
+          }
+
+          // 4. a committed secret. These have leaked from pages in this estate before.
+          for(const f of fs.readdirSync('.')){
+            if(!/\.(html|js|mjs|json|md)$/.test(f)) continue;
+            const s=fs.readFileSync(f,'utf8');
+            const hit=s.match(/(sk-[A-Za-z0-9]{20,}|ghp_[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----)/);
+            if(hit){ console.error(f+' contains what looks like a live credential: '+hit[1].slice(0,12)+'…'); fail=1; }
+          }
+
+          if(fail){ console.error('\nPAGE GATE FAILED'); process.exit(1); }
+          console.log('page gate clean — '+html.length+' page(s): scripts parse, no placeholders, no dead same-repo links, no committed keys'
+            +(built?' ('+built+' link(s) built at runtime by the page script, not checkable here)':'')
+            +(routed?' ('+routed+' server route(s), each checked against the file it serves)':''));
+          "

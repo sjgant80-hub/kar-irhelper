@@ -1,0 +1,15 @@
+{
+ "synthetic": "SYNTHETIC — written to resemble real command output from a compromised host; not data from any real machine",
+ "tool": "kar-irhelper/1",
+ "os": "windows",
+ "host": "DESK7",
+ "collectedAt": "2026-11-16T12:00:00Z",
+ "outputs": {
+  "processes": "\"ProcessId\",\"Name\",\"ExecutablePath\",\"CommandLine\"\r\n\"4\",\"System\",\"\",\"\"\r\n\"700\",\"explorer.exe\",\"C:\\Windows\\explorer.exe\",\"C:\\Windows\\Explorer.EXE\"\r\n\"6120\",\"svch0st.exe\",\"C:\\Users\\bob\\AppData\\Local\\Temp\\svch0st.exe\",\"svch0st.exe -k netsvcs\"\r\n",
+  "tasks": "\"HostName\",\"TaskName\",\"Task To Run\"\r\n\"DESK7\",\"\\Microsoft\\Windows\\Defrag\\ScheduledDefrag\",\"%windir%\\system32\\defrag.exe -c -h -o\"\r\n\"DESK7\",\"\\OneDriveSync\",\"powershell.exe -nop -w hidden -enc SQBFAFgAIAAoAE4AZQB3AC0ATwBiAGoAZQBjAHQA\"\r\n",
+  "services": "\"Name\",\"State\",\"StartMode\",\"PathName\"\r\n\"Spooler\",\"Running\",\"Auto\",\"C:\\Windows\\System32\\spoolsv.exe\"\r\n\"UpdSvc\",\"Running\",\"Auto\",\"C:\\Users\\bob\\AppData\\Roaming\\upd\\svc.exe\"\r\n",
+  "logons": "\"Time\",\"Id\",\"User\",\"Ip\"\r\n\"2026-11-16T09:50:00Z\",\"4625\",\"Administrator\",\"203.0.113.9\"\r\n\"2026-11-16T09:51:00Z\",\"4625\",\"Administrator\",\"203.0.113.9\"\r\n\"2026-11-16T09:52:00Z\",\"4625\",\"Administrator\",\"203.0.113.9\"\r\n\"2026-11-16T09:53:00Z\",\"4625\",\"Administrator\",\"203.0.113.9\"\r\n\"2026-11-16T09:54:00Z\",\"4625\",\"Administrator\",\"203.0.113.9\"\r\n\"2026-11-16T09:55:00Z\",\"4625\",\"Administrator\",\"203.0.113.9\"\r\n\"2026-11-16T09:56:00Z\",\"4625\",\"Administrator\",\"203.0.113.9\"\r\n\"2026-11-16T09:58:00Z\",\"4624\",\"Administrator\",\"203.0.113.9\"\r\n\"2026-11-16T08:00:00Z\",\"4624\",\"bob\",\"-\"\r\n"
+ },
+ "files": [],
+ "errors": {}
+}

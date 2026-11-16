@@ -1,0 +1,122 @@
+name: irhelper
+# The kernel, the page, and the tool on REAL hosts, checked on every change, on GitHub's machines:
+#   · the kernel's tests and the page's; the page runs ir.mjs byte for byte
+#   · witness v0.6 breaks ir.mjs on purpose, one operator at a time; every break must be caught
+#   · on a throwaway Linux runner and a throwaway Windows runner: real signs of compromise are planted, the tool
+#     refuses to collect without an authorization for that host, then collects read-only evidence, finds every planted
+#     sign, and each proposed command and its undo is RUN (tools/ci-proof.mjs stands in for the person approving it)
+#     and checked to do what it says. The log must verify, and must stop verifying when an entry is edited.
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  kernel:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with: { node-version: '22' }
+      - name: tests — the kernel, and the page's claims
+        run: node --test ir.test.mjs page-parity.test.mjs
+      - name: the page holds the gated kernel byte for byte
+        run: node tools/inline.mjs --check
+      - name: witness — every mutant of the kernel must die
+        run: |
+          git clone --depth 1 --branch v0.6 https://github.com/sjgant80-hub/witness.git /tmp/witness
+          node /tmp/witness/witness.mjs mutate ir.mjs --timeout 60000 --cap 100000 --test node --test ir.test.mjs > gate.out 2>&1 || true
+          node -e "const b=require('fs').readFileSync('gate.out','utf8');const j=JSON.parse(b.slice(b.indexOf('{'),b.lastIndexOf('}')+1));if(j.clean!==true||j.killed!==j.total||!(j.total>0)){console.error('::error::witness not clean: '+j.killed+'/'+j.total);process.exit(1)}console.log('witness CLEAN '+j.killed+'/'+j.total)"
+
+  real-host-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with: { node-version: '22' }
+      - name: plant signs on this throwaway runner, collect, find them, and run every proposal and its undo
+        run: |
+          set -eu
+          NODE="$(command -v node)"
+          # the planted signs: a program running from /tmp, a bash holding a TCP connection, a second uid-0 account,
+          # a new SSH key, and a cron job that runs from /tmp
+          cp /bin/sleep /tmp/ir-canary
+          /tmp/ir-canary 900 > /dev/null 2>&1 < /dev/null &
+          PROC=$!
+          python3 -m http.server 8999 --bind 127.0.0.1 > /dev/null 2>&1 &
+          sleep 2
+          bash -c 'exec 3<>/dev/tcp/127.0.0.1/8999; read -r -t 900 x <&3' > /dev/null 2>&1 < /dev/null &
+          SHELLPID=$!
+          sudo useradd -o -u 0 -M -p 'ir-canary-not-a-real-hash' -s /usr/sbin/nologin ircanary
+          mkdir -p "$HOME/.ssh" && echo 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIrCanaryKeyNotReal ir-canary' >> "$HOME/.ssh/authorized_keys"
+          CRON=""
+          if command -v crontab > /dev/null; then echo '*/5 * * * * /tmp/ir-canary 1' | crontab - && CRON="/var/spool/cron/crontabs/$USER"; fi
+          sleep 1
+          printf '{"proc":"%s","shell":"%s","user":"ircanary","key":"%s","cron":"%s"}\n' "$PROC" "$SHELLPID" "$HOME/.ssh/authorized_keys" "$CRON" > canary.json
+          cat canary.json
+          echo "--- no authorization for this host: it must refuse, and log the refusal"
+          node tools/ci-proof.mjs scope wrong.json not-this-host
+          if sudo "$NODE" bin/ir.mjs collect --scope wrong.json; then echo "::error::collect ran without an authorization for this host"; exit 1; else test $? -eq 2; fi
+          test ! -e evidence.json
+          echo "--- authorized: collect, analyse, prove"
+          node tools/ci-proof.mjs scope scope.json
+          sudo "$NODE" bin/ir.mjs collect --scope scope.json --dry-run
+          sudo "$NODE" bin/ir.mjs collect --scope scope.json
+          sudo "$NODE" bin/ir.mjs analyse evidence.json
+          sudo "$NODE" tools/ci-proof.mjs prove evidence.json canary.json
+          sudo "$NODE" bin/ir.mjs approve F1.1 --evidence evidence.json --by "CI (a throwaway runner)"
+          echo "--- the log"
+          "$NODE" bin/ir.mjs verify-log
+          ANCHOR="$(node -e "const l=require('./ir-log.json');console.log(l[l.length-1].hash)")"
+          "$NODE" bin/ir.mjs verify-log --anchor "$ANCHOR"
+          node -e "const fs=require('fs');const l=JSON.parse(fs.readFileSync('ir-log.json'));l[1].data.edited=true;fs.writeFileSync('edited.json',JSON.stringify(l))"
+          if "$NODE" bin/ir.mjs verify-log edited.json; then echo "::error::an edited log verified"; exit 1; else test $? -eq 3; fi
+          node -e "const l=require('./ir-log.json');const kinds=l.map(e=>e.kind).join(',');console.log(kinds);if(!kinds.startsWith('refused,scope,collect,analyse'))process.exit(1)"
+
+  real-host-windows:
+    runs-on: windows-latest
+    defaults:
+      run: { shell: pwsh }
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with: { node-version: '22' }
+      - name: plant signs on this throwaway runner, collect, find them, and run every proposal and its undo
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $false   # exit codes are checked by hand below
+          # the planted signs: a program running from the user's Temp folder, a scheduled task and a service that run
+          # from it, and a local account (for the account step)
+          $t = Join-Path $env:TEMP 'ir-canary.exe'
+          Copy-Item (Join-Path $env:SystemRoot 'System32\PING.EXE') $t
+          $p = Start-Process $t -ArgumentList '-n', '900', '127.0.0.1' -WindowStyle Hidden -PassThru
+          schtasks.exe /create /tn IRCanary /tr "$t -n 1 127.0.0.1" /sc daily /st 03:00 /f
+          sc.exe create IRCanarySvc binPath= "$t" start= demand
+          New-LocalUser -Name ircanary -NoPassword -Description 'kar-irhelper CI canary' | Out-Null
+          Start-Sleep -Seconds 2
+          [System.IO.File]::WriteAllText("$PWD\canary.json", (@{ proc = "$($p.Id)"; path = $t; task = '\IRCanary'; service = 'IRCanarySvc'; user = 'ircanary' } | ConvertTo-Json))
+          Get-Content canary.json
+          Write-Output '--- no authorization for this host: it must refuse, and log the refusal'
+          node tools/ci-proof.mjs scope wrong.json not-this-host
+          node bin/ir.mjs collect --scope wrong.json
+          if ($LASTEXITCODE -ne 2) { throw "collect did not refuse without an authorization for this host (exit $LASTEXITCODE)" }
+          if (Test-Path evidence.json) { throw 'evidence was written without an authorization' }
+          Write-Output '--- authorized: collect, analyse, prove'
+          node tools/ci-proof.mjs scope scope.json
+          node bin/ir.mjs collect --scope scope.json --dry-run
+          if ($LASTEXITCODE -ne 0) { throw 'dry run failed' }
+          node bin/ir.mjs collect --scope scope.json
+          if ($LASTEXITCODE -ne 0) { throw 'collect failed' }
+          node bin/ir.mjs analyse evidence.json
+          if ($LASTEXITCODE -ne 0) { throw 'analyse failed' }
+          node tools/ci-proof.mjs prove evidence.json canary.json
+          if ($LASTEXITCODE -ne 0) { throw 'the proof failed' }
+          node bin/ir.mjs approve F1.1 --evidence evidence.json --by 'CI (a throwaway runner)'
+          if ($LASTEXITCODE -ne 0) { throw 'approve failed' }
+          Write-Output '--- the log'
+          node bin/ir.mjs verify-log
+          if ($LASTEXITCODE -ne 0) { throw 'the log did not verify' }
+          node -e "const fs=require('fs');const l=JSON.parse(fs.readFileSync('ir-log.json'));l[1].data.edited=true;fs.writeFileSync('edited.json',JSON.stringify(l))"
+          node bin/ir.mjs verify-log edited.json
+          if ($LASTEXITCODE -ne 3) { throw 'an edited log verified' }
+          node -e "const l=require('./ir-log.json');const kinds=l.map(e=>e.kind).join(',');console.log(kinds);if(!kinds.startsWith('refused,scope,collect,analyse'))process.exit(1)"
+          if ($LASTEXITCODE -ne 0) { throw 'the log is missing an entry' }
+          exit 0

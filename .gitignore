@@ -1,0 +1,10 @@
+node_modules/
+gate.out
+evidence.json
+ir-log.json
+scope.json
+wrong.json
+edited.json
+canary.json
+proof.json
+*.ir-evidence
